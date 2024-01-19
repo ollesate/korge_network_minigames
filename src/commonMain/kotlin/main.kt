@@ -4,20 +4,11 @@ import korlibs.korge.scene.*
 import korlibs.korge.view.*
 import korlibs.image.color.*
 import korlibs.image.format.*
-import korlibs.inject.injector
-import korlibs.io.async.CIO
-import korlibs.io.async.launch
+import korlibs.inject.*
 import korlibs.io.file.std.*
-import korlibs.io.lang.cancel
-import korlibs.io.lang.cancellable
-import korlibs.io.net.ws.WebSocketClient
-import korlibs.korge.input.onDown
+import korlibs.korge.input.*
 import korlibs.math.geom.*
-import kotlinx.coroutines.Dispatchers
-import net.Client
-import net.SOCKET_URL
-import net.client
-import kotlin.coroutines.coroutineContext
+import net.*
 
 suspend fun main() = Korge(windowSize = Size(750, 750), backgroundColor = Colors["#2b2b2b"]) {
     val focusables = (0 until 4).map {
@@ -39,9 +30,13 @@ suspend fun main() = Korge(windowSize = Size(750, 750), backgroundColor = Colors
             }
 
             pos = point
+            val client = client()
+            println("client created")
+            client.listen()
+
             changeTo(
                 injects = arrayOf(
-                    client(),
+                    client,
                     focusables[index],
                 )
             ) { MainScene(color) }
@@ -66,56 +61,100 @@ class MainScene(
                     )
                 }
             }
-            player()
+            onHost {
+
+            }
+
+            onPlayerJoined { playerJoined ->
+                spaceship {
+                    controls(injector, "player_spaceship_${playerJoined.player.id}", playerJoined) {
+                        it.pressing(Key.W) {
+                            y -= 10
+                        }
+                        it.pressing(Key.S) {
+                            y += 10
+                        }
+                        it.pressing(Key.A) {
+                            x -= 10
+                        }
+                        it.pressing(Key.D) {
+                            x += 10
+                        }
+                    }
+                }
+            }
         }
 	}
 }
 
-fun Scene.onPlayer() {
-
+interface Controls {
+    fun pressing(key: Key, block: () -> Unit)
 }
 
-fun Scene.onHost() {
+class PlayerControls(
+    val controlId: String,
+    val focusable: Focusable,
+    val view: View,
+    val client: Client,
+    val isOwner: Boolean
+): Controls {
+    private val actions = mutableMapOf<String, () -> Unit>()
 
-}
-
-
-suspend fun Container.player() {
-    val client = injector().get<Client>()
-    val context = coroutineContext
-    val focusable = injector().get<Focusable>()
-
-    client.listen()
-
-    image(resourcesVfs["spaceship.png"].readBitmap()) {
-        anchor(.5, .5)
-        position(256, 256)
-
-        client.onMessage { message ->
-            when (message) {
-                "W" -> y -= 10
-                "S" -> y += 10
-                "A" -> x -= 10
-                "D" -> x += 10
+    init {
+        client.onControlUpdate {
+            if (it.controlId == controlId) {
+                actions[it.key]?.invoke()
             }
         }
+    }
 
-        addUpdater {
-            if (!focusable.isFocused) return@addUpdater
-            when {
-                stage!!.input.keys.pressing(Key.W) -> {
-                    client.send("W")
-                }
-                stage!!.input.keys.pressing(Key.S) -> {
-                    client.send("S")
-                }
-                stage!!.input.keys.pressing(Key.A) -> {
-                    client.send("A")
-                }
-                stage!!.input.keys.pressing(Key.D) -> {
-                    client.send("D")
+    override fun pressing(key: Key, block: () -> Unit) {
+        actions += key.name to block
+        if (isOwner) {
+            println("Send controls $key")
+            view.keys.down(key) {
+                println("Blomma ${injector()}")
+                if (focusable.isFocused) {
+                    client.send(Message.ControlUpdate(controlId, key.name))
                 }
             }
         }
     }
+}
+
+suspend fun View.controls(
+    injector: Injector,
+    controlId: String,
+    playerJoined: Message.PlayerJoined,
+    block: (controls: Controls) -> Unit
+) {
+    val client = injector.get<Client>()
+    val myPlayer = client.player
+    println("controls and player is $myPlayer, is owner? ${playerJoined.isYou}")
+    PlayerControls(
+        controlId,
+        injector.get<Focusable>(),
+        view = this,
+        client = client,
+        isOwner = playerJoined.isYou
+    ).also(block)
+}
+
+suspend fun Container.onPlayerJoined(block: suspend Container.(playerJoined: Message.PlayerJoined) -> Unit) {
+    val client = injector().get<Client>()
+    client.onPlayerJoined {
+        println("PLAYER_JOINED")
+        block(this, it)
+    }
+}
+
+fun Scene.onHost(block: () -> Unit) {
+
+}
+
+suspend inline fun Container.spaceship(block: Image.() -> Unit) {
+    image(resourcesVfs["spaceship.png"].readBitmap()) {
+        anchor(.5, .5)
+        position(256, 256)
+    }.also(block)
 }

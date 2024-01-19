@@ -1,17 +1,14 @@
 package net
 
+import korlibs.image.format.*
 import korlibs.inject.injector
-import korlibs.io.async.CIO
-import korlibs.io.async.launch
+import korlibs.io.async.*
 import korlibs.io.net.ws.WebSocketClient
-import korlibs.korge.view.Container
 import korlibs.korge.view.View
-import korlibs.korge.view.addUpdater
-import korlibs.korge.view.solidRect
-import korlibs.math.geom.Size
 import korlibs.math.geom.degrees
 import kotlinx.coroutines.Dispatchers
-import kotlinx.serialization.Serializable
+import kotlinx.serialization.*
+import kotlinx.serialization.json.*
 import kotlin.reflect.KMutableProperty0
 
 const val SOCKET_URL = "ws://localhost:8080/"
@@ -21,17 +18,54 @@ suspend fun client() = Client(
     WebSocketClient(SOCKET_URL)
 )
 
+@Serializable
+data class Player(
+    val id: String,
+    val isHost: Boolean,
+)
+
+@Serializable
+sealed class Message {
+    @Serializable
+    @SerialName("PlayerJoined")
+    data class PlayerJoined(
+        val player: Player,
+        val isYou: Boolean
+    ): Message()
+    @Serializable
+    @SerialName("PlayerAssigned")
+    data class PlayerAssigned(val player: Player): Message()
+    @Serializable
+    @SerialName("ControlUpdate")
+    data class ControlUpdate(val controlId: String, val key: String): Message()
+}
+
 class Client(
     val socket: WebSocketClient,
 ) {
-    private val listeners = mutableListOf<(String) -> Unit>()
+    var player: Player? = null
+    private val json = Json {
+        ignoreUnknownKeys = true
+    }
+    val playerJoined = AsyncSignal<Message.PlayerJoined>()
+    val controlUpdate = AsyncSignal<Message.ControlUpdate>()
 
-    init {
-
+    fun onPlayerJoined(function: suspend (Message.PlayerJoined) -> Unit) {
+        playerJoined {
+            function(it)
+        }
     }
 
-    fun onMessage(function: (String) -> Unit) {
-        listeners += function
+    fun onControlUpdate(function: suspend (Message.ControlUpdate) -> Unit) {
+        controlUpdate {
+            function(it)
+        }
+    }
+
+    suspend fun receivePlayer(): Player {
+        return json.decodeFromString<Message.PlayerJoined>(
+            (socket.messageChannelString().receive() as String).also(::println)
+        ).player
     }
 
     fun syncState(id: String, listener: (Map<String, String>) -> Unit) {
@@ -40,19 +74,29 @@ class Client(
 
     suspend fun listen() = launch(Dispatchers.Default) {
         socket.onStringMessage { message ->
-            println("onString message")
-            listeners.forEach { listener ->
-                listener(message)
+            launch(Dispatchers.Default) {
+                messageReceived(json.decodeFromString<Message>(message))
             }
         }
     }
 
-    fun send(message: String) {
-        listeners.forEach { listener ->
-            listener(message)
+    suspend fun messageReceived(message: Message) {
+        println("message received $message")
+        when (message) {
+            is Message.PlayerJoined -> playerJoined(message)
+            is Message.ControlUpdate -> controlUpdate(message)
+            is Message.PlayerAssigned -> {
+                player = message.player
+            }
+        }
+    }
+
+    fun send(message: Message) {
+        launch(Dispatchers.Unconfined) {
+            messageReceived(message)
         }
         launch(Dispatchers.CIO) {
-            socket.send(message)
+            socket.send(json.encodeToString<Message>(message))
         }
     }
 }
@@ -63,8 +107,6 @@ data class State(
     val prototype: String,
     val props: Map<String, String>,
 )
-
-
 
 suspend fun View.sync(
     id: String,
