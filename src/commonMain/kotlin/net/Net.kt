@@ -15,6 +15,7 @@ import kotlinx.serialization.Serializable
 import kotlin.reflect.KMutableProperty0
 
 const val SOCKET_URL = "ws://localhost:8080/"
+//const val SOCKET_URL = "ws://ktor-minigames-075959892b51.herokuapp.com/"
 
 suspend fun client() = Client(
     WebSocketClient(SOCKET_URL)
@@ -39,6 +40,7 @@ class Client(
 
     suspend fun listen() = launch(Dispatchers.Default) {
         socket.onStringMessage { message ->
+            println("onString message")
             listeners.forEach { listener ->
                 listener(message)
             }

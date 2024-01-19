@@ -71,6 +71,15 @@ class MainScene(
 	}
 }
 
+fun Scene.onPlayer() {
+
+}
+
+fun Scene.onHost() {
+
+}
+
+
 suspend fun Container.player() {
     val client = injector().get<Client>()
     val context = coroutineContext
@@ -78,9 +87,8 @@ suspend fun Container.player() {
 
     client.listen()
 
-    image(resourcesVfs["korge.png"].readBitmap()) {
+    image(resourcesVfs["spaceship.png"].readBitmap()) {
         anchor(.5, .5)
-        scale(0.3)
         position(256, 256)
 
         client.onMessage { message ->
