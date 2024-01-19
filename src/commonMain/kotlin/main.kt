@@ -14,45 +14,12 @@ import korlibs.io.net.ws.WebSocketClient
 import korlibs.korge.input.onDown
 import korlibs.math.geom.*
 import kotlinx.coroutines.Dispatchers
+import net.Client
 import net.SOCKET_URL
+import net.client
 import kotlin.coroutines.coroutineContext
 
 suspend fun main() = Korge(windowSize = Size(750, 750), backgroundColor = Colors["#2b2b2b"]) {
-    val stage = this
-
-//    fixedSizeContainer(
-//        size = Size(width / 2, height / 2),
-//        clip = true
-//    ) {
-//        solidRect(size, color = Colors.GREEN)
-//
-//        player()
-//
-//        WebSocketClient(URL).apply {
-//            send("Hei there")
-//            onStringMessage {
-//                println(it)
-//            }
-//        }
-//    }
-//
-//    fixedSizeContainer(
-//        size = Size(width / 2, height / 2),
-//        clip = true
-//    ) {
-//        solidRect(size, color = Colors.RED)
-//        x += stage.width / 2
-//
-//        player()
-//
-//        WebSocketClient(URL).apply {
-//            send("Hei there")
-//            onStringMessage {
-//                println(it)
-//            }
-//        }
-//    }
-
     val focusables = (0 until 4).map {
         Focusable(it == 0)
     }
@@ -82,44 +49,9 @@ suspend fun main() = Korge(windowSize = Size(750, 750), backgroundColor = Colors
     }
 }
 
-suspend fun client() = Client(
-    WebSocketClient(SOCKET_URL)
-)
-
 class Focusable(
     var isFocused: Boolean
 )
-
-class Client(
-    val socket: WebSocketClient,
-) {
-    private val listeners = mutableListOf<(String) -> Unit>()
-
-    init {
-
-    }
-
-    fun onMessage(function: (String) -> Unit) {
-        listeners += function
-    }
-
-    suspend fun listen() = launch(Dispatchers.Default) {
-        socket.onStringMessage { message ->
-            listeners.forEach { listener ->
-                listener(message)
-            }
-        }
-    }
-
-    fun send(message: String) {
-        listeners.forEach { listener ->
-            listener(message)
-        }
-        launch(Dispatchers.CIO) {
-            socket.send(message)
-        }
-    }
-}
 
 class MainScene(
     val sceneColor: RGBA
