@@ -5,9 +5,13 @@ import korlibs.korge.view.*
 import korlibs.image.color.*
 import korlibs.image.format.*
 import korlibs.inject.*
+import korlibs.io.async.*
+import korlibs.io.async.async
 import korlibs.io.file.std.*
 import korlibs.korge.input.*
+import korlibs.logger.*
 import korlibs.math.geom.*
+import kotlinx.coroutines.*
 import net.*
 
 suspend fun main() = Korge(windowSize = Size(750, 750), backgroundColor = Colors["#2b2b2b"]) {
@@ -15,32 +19,34 @@ suspend fun main() = Korge(windowSize = Size(750, 750), backgroundColor = Colors
         Focusable(it == 0)
     }
 
-    listOf(
-        Point(0, 0) to Colors.RED,
-        Point(width / 2, 0) to Colors.GREEN,
-        Point(0, height / 2) to Colors.BLUE,
-        Point(width / 2, height / 2) to Colors.ORANGE,
-    ).forEachIndexed { index, (point, color) ->
-        sceneContainer(
-            size = Size(width / 2, height / 2)
-        ).apply {
-            onDown {
-                focusables.forEach { it.isFocused = false }
-                focusables[index].isFocused = true
-            }
 
-            pos = point
-            val client = client()
-            println("client created")
-            client.listen()
 
-            changeTo(
-                injects = arrayOf(
-                    client,
-                    focusables[index],
-                )
-            ) { MainScene(color) }
+    println("Hello")
+
+    sceneContainer(
+
+    ).apply {
+        onDown {
+            focusables.forEach { it.isFocused = false }
+            focusables[index].isFocused = true
         }
+
+        val client = client()
+        println("client created")
+//        client.listen()
+        keys {
+            down(Key.SPACE) {
+                client.send(Message.ControlUpdate("Ha", "1234"))
+            }
+        }
+
+
+        changeTo(
+            injects = arrayOf(
+                client,
+                focusables[index],
+            )
+        ) { MainScene(Colors.RED) }
     }
 }
 
@@ -113,7 +119,7 @@ class PlayerControls(
         if (isOwner) {
             println("Send controls $key")
             view.keys.down(key) {
-                println("Blomma ${injector()}")
+                // Frames.append()
                 if (focusable.isFocused) {
                     client.send(Message.ControlUpdate(controlId, key.name))
                 }
@@ -143,7 +149,6 @@ suspend fun View.controls(
 suspend fun Container.onPlayerJoined(block: suspend Container.(playerJoined: Message.PlayerJoined) -> Unit) {
     val client = injector().get<Client>()
     client.onPlayerJoined {
-        println("PLAYER_JOINED")
         block(this, it)
     }
 }

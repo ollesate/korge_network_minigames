@@ -1,12 +1,13 @@
 package net
 
-import korlibs.image.format.*
 import korlibs.inject.injector
 import korlibs.io.async.*
 import korlibs.io.net.ws.WebSocketClient
 import korlibs.korge.view.View
 import korlibs.math.geom.degrees
-import kotlinx.coroutines.Dispatchers
+import korlibs.time.*
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.*
 import kotlinx.serialization.*
 import kotlinx.serialization.json.*
 import kotlin.reflect.KMutableProperty0
@@ -43,12 +44,33 @@ sealed class Message {
 class Client(
     val socket: WebSocketClient,
 ) {
+    val inputChannel = socket.messageChannelString()
+    val outputChannel = Channel<Message>()
     var player: Player? = null
     private val json = Json {
         ignoreUnknownKeys = true
     }
     val playerJoined = AsyncSignal<Message.PlayerJoined>()
     val controlUpdate = AsyncSignal<Message.ControlUpdate>()
+    var times = 0
+
+    init {
+        GlobalScope.launch(Dispatchers.CIO) {
+            while (isActive) {
+                val message = outputChannel.receive()
+                socket.send(json.encodeToString<Message>(message))
+                messageReceived(message)
+            }
+        }
+
+        launch(Dispatchers.CIO) {
+            for (message in inputChannel) {
+                times++
+                println("Recevied message $message")
+                messageReceived(json.decodeFromString<Message>(message as String))
+            }
+        }
+    }
 
     fun onPlayerJoined(function: suspend (Message.PlayerJoined) -> Unit) {
         playerJoined {
@@ -81,7 +103,6 @@ class Client(
     }
 
     suspend fun messageReceived(message: Message) {
-        println("message received $message")
         when (message) {
             is Message.PlayerJoined -> playerJoined(message)
             is Message.ControlUpdate -> controlUpdate(message)
@@ -92,12 +113,13 @@ class Client(
     }
 
     fun send(message: Message) {
-        launch(Dispatchers.Unconfined) {
-            messageReceived(message)
-        }
-        launch(Dispatchers.CIO) {
-            socket.send(json.encodeToString<Message>(message))
-        }
+//        launch(Dispatchers.Unconfined) {
+//            messageReceived(message)
+//        }
+        outputChannel.trySend(message)
+//        launch(Dispatchers.Unconfined) {
+//            socket.send(json.encodeToString<Message>(message))
+//        }
     }
 }
 
@@ -107,6 +129,18 @@ data class State(
     val prototype: String,
     val props: Map<String, String>,
 )
+
+
+object Frames {
+    val frames = mutableListOf<Double>()
+    fun append() {
+
+        frames += DateTime.nowUnixMillis()
+        println("frames ${frames.takeLastWhile { it > DateTime.nowUnixMillis().toLong() / 1000 * 1000 }.size}")
+
+    }
+}
+
 
 suspend fun View.sync(
     id: String,
