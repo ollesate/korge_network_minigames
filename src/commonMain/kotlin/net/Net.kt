@@ -7,6 +7,7 @@ import korlibs.korge.view.View
 import korlibs.math.geom.degrees
 import korlibs.time.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.NonCancellable.isActive
 import kotlinx.coroutines.channels.*
 import kotlinx.serialization.*
 import kotlinx.serialization.json.*
@@ -39,6 +40,9 @@ sealed class Message {
     @Serializable
     @SerialName("ControlUpdate")
     data class ControlUpdate(val controlId: String, val key: String): Message()
+    @Serializable
+    @SerialName("GetPlayers")
+    data object GetPlayers: Message()
 }
 
 class Client(
@@ -55,8 +59,8 @@ class Client(
     var times = 0
 
     init {
-        GlobalScope.launch(Dispatchers.CIO) {
-            while (isActive) {
+        launch(Dispatchers.CIO) {
+            while (!outputChannel.isClosedForReceive) {
                 val message = outputChannel.receive()
                 socket.send(json.encodeToString<Message>(message))
                 messageReceived(message)
@@ -84,12 +88,6 @@ class Client(
         }
     }
 
-    suspend fun receivePlayer(): Player {
-        return json.decodeFromString<Message.PlayerJoined>(
-            (socket.messageChannelString().receive() as String).also(::println)
-        ).player
-    }
-
     fun syncState(id: String, listener: (Map<String, String>) -> Unit) {
 
     }
@@ -105,6 +103,7 @@ class Client(
             is Message.PlayerAssigned -> {
                 player = message.player
             }
+            Message.GetPlayers -> {}
         }
     }
 

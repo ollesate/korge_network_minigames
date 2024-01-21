@@ -27,30 +27,22 @@ suspend fun Container.multiClientKorge(numberOfClients: Int, sceneBlocks: suspen
     }
     class MyScene: Scene()
 
-    println("Hello")
     val clients = (0 until numberOfClients).map {
         async(Dispatchers.Default) {
             client(connect = true)
         }
     }.awaitAll()
-    println("End")
 
     val sceneContainers = (0 until numberOfClients).map { index ->
         sceneContainer {
             val scene = changeTo(
-                clients.get(index)
+                clients[index]
             ) {
                 MyScene()
             }
             sceneBlocks(this, scene.injector to index)
         }
     }
-
-//    delay(1000)
-//    clients.forEach { client ->
-//        client.listen()
-//    }
-
 
     viewToShow { index ->
         println("Change to scene $index")
@@ -243,6 +235,7 @@ suspend fun Container.onPlayerJoined(injector: Injector, block: suspend Containe
     client.onPlayerJoined {
         block(this, it)
     }
+    client.send(Message.GetPlayers)
 }
 
 fun Scene.onHost(block: () -> Unit) {
