@@ -15,8 +15,8 @@ import kotlin.reflect.KMutableProperty0
 const val SOCKET_URL = "ws://localhost:8080/"
 //const val SOCKET_URL = "ws://ktor-minigames-075959892b51.herokuapp.com/"
 
-suspend fun client() = Client(
-    ClientWithNoLag(SOCKET_URL)
+suspend fun client(connect: Boolean = true) = Client(
+    ClientWithNoLag(SOCKET_URL, connect = connect)
 )
 
 @Serializable
@@ -42,7 +42,7 @@ sealed class Message {
 }
 
 class Client(
-    val socket: WebSocketClient,
+    val socket: ClientWithNoLag,
 ) {
     val inputChannel = socket.messageChannelString()
     val outputChannel = Channel<Message>()
@@ -95,11 +95,7 @@ class Client(
     }
 
     suspend fun listen() = launch(Dispatchers.Default) {
-        socket.onStringMessage { message ->
-            launch(Dispatchers.Default) {
-                messageReceived(json.decodeFromString<Message>(message))
-            }
-        }
+        socket.internalConnect()
     }
 
     suspend fun messageReceived(message: Message) {
@@ -113,6 +109,7 @@ class Client(
     }
 
     fun send(message: Message) {
+        println("Send message $message")
         outputChannel.trySend(message)
     }
 }

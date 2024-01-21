@@ -26,7 +26,7 @@ suspend fun ClientWithNoLag(
     headers: Http.Headers = Http.Headers(),
     masked: Boolean = true,
     init: WebSocketClient.() -> Unit = {},
-): WebSocketClient {
+): ClientWithNoLag {
     if (Platform.isJsBrowserOrWorker) error("RawSocketWebSocketClient is not supported on JS browser. Use WebSocketClient instead")
     val uri = URL(url)
     val secure: Boolean = uri.isSecureScheme
@@ -95,12 +95,15 @@ class ClientWithNoLag(
 
     private var readPacketsJob: Job? = null
 
-    @KorioInternal
     suspend fun internalConnect() {
         if (Platform.isJsBrowserOrWorker) error("RawSocketWebSocketClient is not supported on JS browser. Use WebSocketClient instead")
 
+        println("internalConnect 1")
+
         client.connect(host, port)
+        println("internalConnect 2")
         client.writeBytes(buildHeader().toByteArray())
+        println("internalConnect 3")
 
         // Read response
         val headers = arrayListOf<String>()
@@ -112,9 +115,14 @@ class ClientWithNoLag(
             }
         }
 
+        println("internalConnect 4")
         readPacketsJob = launchImmediately(coroutineContext) {
             delay(1.milliseconds)
-            internalReadPackets()
+            println("internalConnect 5")
+            launch(Dispatchers.Default) {
+                internalReadPackets()
+            }
+            println("internalConnect 6")
         }
     }
 
@@ -258,9 +266,9 @@ suspend fun readFrameOrNull(s: AsyncInputStream): WsFrame? {
 
     times += DateTime.nowUnixMillis() // 0
 
-    println("read input " + times.mapIndexed { index, d ->
-        (d - (times.getOrNull(index - 1) ?: d))
-    })
+//    println("read input " + times.mapIndexed { index, d ->
+//        (d - (times.getOrNull(index - 1) ?: d))
+//    })
 
     return WsFrame(finalData, opcode, isFinal, isMasked)
 }

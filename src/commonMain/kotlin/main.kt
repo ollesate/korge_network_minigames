@@ -6,48 +6,140 @@ import korlibs.image.color.*
 import korlibs.image.format.*
 import korlibs.inject.*
 import korlibs.io.async.*
-import korlibs.io.async.async
 import korlibs.io.file.std.*
 import korlibs.korge.input.*
-import korlibs.logger.*
 import korlibs.math.geom.*
 import kotlinx.coroutines.*
 import net.*
 
-suspend fun main() = Korge(windowSize = Size(750, 750), backgroundColor = Colors["#2b2b2b"]) {
-    val focusables = (0 until 4).map {
-        Focusable(it == 0)
+val colors = listOf(
+    Colors.RED, Colors.GREEN, Colors.BLUE, Colors.YELLOW
+)
+
+suspend fun Container.multiClientKorge(numberOfClients: Int, sceneBlocks: suspend SceneContainer.(Pair<Injector, Int>) -> Unit) {
+    val viewToShow = AsyncSignal<Int>()
+
+    listOf(Key.N1, Key.N2, Key.N3, Key.N4, Key.N5, Key.N6).take(numberOfClients).forEachIndexed { index, key ->
+        keys.down(key) {
+            println("Pressed $key")
+            viewToShow(index)
+        }
     }
-
-
+    class MyScene: Scene()
 
     println("Hello")
-
-    sceneContainer(
-
-    ).apply {
-        onDown {
-            focusables.forEach { it.isFocused = false }
-            focusables[index].isFocused = true
+    val clients = (0 until numberOfClients).map {
+        async(Dispatchers.Default) {
+            client(connect = true)
         }
+    }.awaitAll()
+    println("End")
 
-        val client = client()
-        println("client created")
+    val sceneContainers = (0 until numberOfClients).map { index ->
+        sceneContainer {
+            val scene = changeTo(
+                clients.get(index)
+            ) {
+                MyScene()
+            }
+            sceneBlocks(this, scene.injector to index)
+        }
+    }
+
+//    delay(1000)
+//    clients.forEach { client ->
 //        client.listen()
-        keys {
-            down(Key.SPACE) {
-                client.send(Message.ControlUpdate("Ha", "1234"))
+//    }
+
+
+    viewToShow { index ->
+        println("Change to scene $index")
+        sceneContainers.forEachIndexed { current, sceneContainer ->
+            sceneContainer.visible = current == index
+        }
+    }
+
+    viewToShow(0)
+}
+
+suspend fun main() = Korge(windowSize = Size(750, 750), backgroundColor = Colors["#2b2b2b"]) {
+    multiClientKorge(4) { (injector, index) ->
+        onPlayerJoined(injector) {
+            println("player joined $it")
+            solidRect(50, 50) {
+                playerControls(injector, "box_" + it.player.id) {
+                    onReceive {
+                        println("onReceive control update $it")
+                        when (it) {
+                            "A" -> x -= 10
+                            "D" -> x += 10
+                            "W" -> y -= 10
+                            "S" -> y += 10
+                        }
+                    }
+
+                    if (it.isYou) {
+                        colorMul = Colors.RED
+                        keys {
+                            down(Key.A) {
+                                if (this@multiClientKorge.visible) send("A")
+                            }
+                            down(Key.D) {
+                                if (this@multiClientKorge.visible) send("D")
+                            }
+                            down(Key.W) {
+                                if (this@multiClientKorge.visible) send("W")
+                            }
+                            down(Key.S) {
+                                if (this@multiClientKorge.visible) send("S")
+                            }
+                        }
+                    }
+                }
             }
         }
-
-
-        changeTo(
-            injects = arrayOf(
-                client,
-                focusables[index],
-            )
-        ) { MainScene(Colors.RED) }
+//        solidRect(50, 50, color = colors[index]) {
+//            keys {
+//                down(Key.A) {
+//                    if (this@multiClientKorge.visible) x -= 10
+//                }
+//                down(Key.D) {
+//                    if (this@multiClientKorge.visible) x += 10
+//                }
+//            }
+//        }
     }
+}
+
+interface Controls2 {
+    fun send(string: String)
+    fun onReceive(block: (String) -> Unit)
+}
+
+suspend fun View.playerControls(injector: Injector, controlId: String, block: Controls2.() -> Unit): Controls2 {
+    val client = injector.get<Client>()
+    val callbacks = mutableListOf<(String) -> Unit>()
+    client.onControlUpdate { message ->
+        if (message.controlId == controlId) {
+            callbacks.forEach {
+                it.invoke(message.key)
+            }
+        }
+    }
+    return object: Controls2 {
+        override fun send(string: String) {
+            client.send(Message.ControlUpdate(controlId, string))
+        }
+
+        override fun onReceive(block: (String) -> Unit) {
+            callbacks += block
+        }
+    }.also(block)
+}
+
+suspend fun View.send(message: Message) {
+    val client = injector().get<Client>()
+    client.send(message)
 }
 
 class Focusable(
@@ -57,7 +149,7 @@ class Focusable(
 class MainScene(
     val sceneColor: RGBA
 ) : Scene() {
-	override suspend fun SContainer.sceneMain() {
+    override suspend fun SContainer.sceneMain() {
         val focusable = injector.get<Focusable>()
         fixedSizeContainer(size, clip = true) {
             solidRect(size, sceneColor) {
@@ -71,7 +163,7 @@ class MainScene(
 
             }
 
-            onPlayerJoined { playerJoined ->
+            onPlayerJoined(injector()) { playerJoined ->
                 spaceship {
                     controls(injector, "player_spaceship_${playerJoined.player.id}", playerJoined) {
                         it.pressing(Key.W) {
@@ -90,7 +182,7 @@ class MainScene(
                 }
             }
         }
-	}
+    }
 }
 
 interface Controls {
@@ -103,7 +195,7 @@ class PlayerControls(
     val view: View,
     val client: Client,
     val isOwner: Boolean
-): Controls {
+) : Controls {
     private val actions = mutableMapOf<String, () -> Unit>()
 
     init {
@@ -146,8 +238,8 @@ suspend fun View.controls(
     ).also(block)
 }
 
-suspend fun Container.onPlayerJoined(block: suspend Container.(playerJoined: Message.PlayerJoined) -> Unit) {
-    val client = injector().get<Client>()
+suspend fun Container.onPlayerJoined(injector: Injector, block: suspend Container.(playerJoined: Message.PlayerJoined) -> Unit) {
+    val client = injector.get<Client>()
     client.onPlayerJoined {
         block(this, it)
     }
