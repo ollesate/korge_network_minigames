@@ -16,7 +16,7 @@ const val SOCKET_URL = "ws://localhost:8080/"
 //const val SOCKET_URL = "ws://ktor-minigames-075959892b51.herokuapp.com/"
 
 suspend fun client() = Client(
-    WebSocketClient(SOCKET_URL)
+    MyClient(SOCKET_URL)
 )
 
 @Serializable
