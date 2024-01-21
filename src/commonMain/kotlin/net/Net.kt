@@ -34,13 +34,13 @@ sealed class Message {
     @SerialName("ReceiveControl")
     data class ReceiveControl(
         val player: Player,
-        val key: Key
+        val key: List<Key>
     ): Message()
 
     @Serializable
     @SerialName("SendControl")
     data class SendControl(
-        val key: Key
+        val key: List<Key>
     ): Message()
 
     @Serializable
@@ -128,7 +128,7 @@ suspend fun Container.onPlayerJoined(injector: Injector, block: suspend Containe
     client.send(Message.GetPlayers)
 }
 
-suspend fun Container.onKeysReceived(injector: Injector, block: suspend Container.(Pair<Player, Key>) -> Unit) {
+suspend fun Container.onKeysReceived(injector: Injector, block: suspend Container.(Pair<Player, List<Key>>) -> Unit) {
     val client = injector.get<Client>()
     client.onControlUpdate {
         block(this, it.player to it.key)

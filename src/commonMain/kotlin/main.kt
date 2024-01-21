@@ -58,27 +58,36 @@ suspend fun main() = Korge(windowSize = Size(750, 750), backgroundColor = Colors
     multiClientKorge(4) { (injector, index) ->
         val client = injector.get<Client>()
         val playerRects = mutableMapOf<String, View>()
+        val playerKeyState = mutableMapOf<Player, List<Key>>()
+        var myKeyState = listOf<Key>()
         fun playerRect() = solidRect(50, 50)
-        val validKeys = listOf(Key.A, Key.D, Key.W, Key.S)
+        val validKeys = listOf(
+            listOf(Key.A, Key.D, Key.W, Key.S),
+            listOf(Key.I, Key.J, Key.K, Key.L),
+            listOf(Key.LEFT, Key.RIGHT, Key.UP, Key.DOWN),
+        )
 
         if (index == 0) {
             onPlayerJoined(injector) { playerJoined ->
                 println("Received on player join ${playerJoined.player.id}")
-                playerRects += playerJoined.player.id to playerRect()
-            }
-            onKeysReceived(injector) { (player, key) ->
-                println("Received control")
-                playerRects[player.id]?.run {
-                    if (key !in validKeys) return@run
-                    when (key) {
-                        Key.A -> x -= 10
-                        Key.D -> x += 10
-                        Key.W -> y -= 10
-                        Key.S -> y += 10
-                        else -> {}
+                playerRects += playerJoined.player.id to playerRect().apply {
+                    addUpdater {
+                        playerKeyState[playerJoined.player]?.takeUnless { it.isEmpty() }?.forEach { key ->
+                            when (key) {
+                                Key.A, Key.J, Key.LEFT -> x -= 10
+                                Key.D, Key.L, Key.RIGHT -> x += 10
+                                Key.W, Key.I, Key.UP -> y -= 10
+                                Key.S, Key.K, Key.DOWN -> y += 10
+                                else -> {}
+                            }
+                            client.send(Message.UpdateState(playerJoined.player.id, x, y))
+                        }
                     }
-                    client.send(Message.UpdateState(player.id, x, y))
                 }
+            }
+            onKeysReceived(injector) { (player, keys) ->
+                println("Received control")
+                playerKeyState[player] = keys
             }
         } else {
             onState(injector) {
@@ -89,13 +98,15 @@ suspend fun main() = Korge(windowSize = Size(750, 750), backgroundColor = Colors
                     y = it.y
                 }
             }
-            keys {
-                validKeys.forEach { key ->
-                    down(key) {
-                        if (this@multiClientKorge.visible) {
-                            client.send(Message.SendControl(key))
-                        }
-                    }
+            addUpdater {
+                val keyState = validKeys[index - 1].filter {
+                    stage?.keys?.pressing(it) == true
+                }
+                if (myKeyState != keyState) {
+                    client.send(
+                        Message.SendControl(keyState)
+                    )
+                    myKeyState = keyState
                 }
             }
         }
