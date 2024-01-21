@@ -1,17 +1,13 @@
 package net
 
-import korlibs.inject.injector
+import korlibs.event.*
+import korlibs.inject.*
 import korlibs.io.async.*
-import korlibs.io.net.ws.WebSocketClient
-import korlibs.korge.view.View
-import korlibs.math.geom.degrees
-import korlibs.time.*
+import korlibs.korge.view.*
 import kotlinx.coroutines.*
-import kotlinx.coroutines.NonCancellable.isActive
 import kotlinx.coroutines.channels.*
 import kotlinx.serialization.*
 import kotlinx.serialization.json.*
-import kotlin.reflect.KMutableProperty0
 
 const val SOCKET_URL = "ws://localhost:8080/"
 //const val SOCKET_URL = "ws://ktor-minigames-075959892b51.herokuapp.com/"
@@ -32,45 +28,59 @@ sealed class Message {
     @SerialName("PlayerJoined")
     data class PlayerJoined(
         val player: Player,
-        val isYou: Boolean
     ): Message()
+
     @Serializable
-    @SerialName("PlayerAssigned")
-    data class PlayerAssigned(val player: Player): Message()
+    @SerialName("ReceiveControl")
+    data class ReceiveControl(
+        val player: Player,
+        val key: Key
+    ): Message()
+
     @Serializable
-    @SerialName("ControlUpdate")
-    data class ControlUpdate(val controlId: String, val key: String): Message()
+    @SerialName("SendControl")
+    data class SendControl(
+        val key: Key
+    ): Message()
+
     @Serializable
     @SerialName("GetPlayers")
     data object GetPlayers: Message()
+
+    @Serializable
+    @SerialName("UpdateState")
+    data class UpdateState(
+        val name: String,
+        val x: Double,
+        val y: Double
+    ): Message()
+}
+
+private val json = Json {
+    ignoreUnknownKeys = true
 }
 
 class Client(
     val socket: ClientWithNoLag,
 ) {
-    val inputChannel = socket.messageChannelString()
-    val outputChannel = Channel<Message>()
-    var player: Player? = null
-    private val json = Json {
-        ignoreUnknownKeys = true
-    }
-    val playerJoined = AsyncSignal<Message.PlayerJoined>()
-    val controlUpdate = AsyncSignal<Message.ControlUpdate>()
-    var times = 0
+    private val inputChannel = socket.messageChannelString()
+    private val outputChannel = Channel<Message>()
+    private val playerJoined = AsyncSignal<Message.PlayerJoined>()
+    private val controlUpdate = AsyncSignal<Message.ReceiveControl>()
+    private val updateState = AsyncSignal<Message.UpdateState>()
 
     init {
         launch(Dispatchers.CIO) {
             while (!outputChannel.isClosedForReceive) {
                 val message = outputChannel.receive()
                 socket.send(json.encodeToString<Message>(message))
-                messageReceived(message)
+//                messageReceived(message)
             }
         }
 
         launch(Dispatchers.CIO) {
             for (message in inputChannel) {
-                times++
-                println("Recevied message $message")
+                println("Received message $message")
                 messageReceived(json.decodeFromString<Message>(message as String))
             }
         }
@@ -82,28 +92,25 @@ class Client(
         }
     }
 
-    fun onControlUpdate(function: suspend (Message.ControlUpdate) -> Unit) {
+    fun onUpdateState(function: suspend (Message.UpdateState) -> Unit) {
+        updateState {
+            function(it)
+        }
+    }
+
+    fun onControlUpdate(function: suspend (Message.ReceiveControl) -> Unit) {
         controlUpdate {
             function(it)
         }
     }
 
-    fun syncState(id: String, listener: (Map<String, String>) -> Unit) {
-
-    }
-
-    suspend fun listen() = launch(Dispatchers.Default) {
-        socket.internalConnect()
-    }
-
-    suspend fun messageReceived(message: Message) {
+    private suspend fun messageReceived(message: Message) {
         when (message) {
             is Message.PlayerJoined -> playerJoined(message)
-            is Message.ControlUpdate -> controlUpdate(message)
-            is Message.PlayerAssigned -> {
-                player = message.player
-            }
+            is Message.ReceiveControl -> controlUpdate(message)
+            is Message.UpdateState -> updateState(message)
             Message.GetPlayers -> {}
+            else -> {}
         }
     }
 
@@ -113,40 +120,24 @@ class Client(
     }
 }
 
-@Serializable
-data class State(
-    val id: String,
-    val prototype: String,
-    val props: Map<String, String>,
-)
+suspend fun Container.onPlayerJoined(injector: Injector, block: suspend Container.(playerJoined: Message.PlayerJoined) -> Unit) {
+    val client = injector.get<Client>()
+    client.onPlayerJoined {
+        block(this, it)
+    }
+    client.send(Message.GetPlayers)
+}
 
-suspend fun View.sync(
-    id: String,
-    setters: Map<String, View.(String) -> Unit> = propSetters
-) {
-    injector().get<Client>().syncState(id) { props ->
-        updateFromProps(props)
+suspend fun Container.onKeysReceived(injector: Injector, block: suspend Container.(Pair<Player, Key>) -> Unit) {
+    val client = injector.get<Client>()
+    client.onControlUpdate {
+        block(this, it.player to it.key)
     }
 }
 
-fun View.updateFromProps(props: Map<String, String>) {
-    props.forEach { (name, value) ->
-        propSetters[name]?.invoke(this, value)
+suspend fun Container.onState(injector: Injector, block: suspend Container.(playerJoined: Message.UpdateState) -> Unit) {
+    val client = injector.get<Client>()
+    client.onUpdateState {
+        block(this, it)
     }
-}
-
-val View.propSetters: Map<String, View.(String) -> Unit>
-    get() = mapOf(
-        "alpha" to { alpha = it.toDouble() },
-        "rotation" to { rotation = it.toDouble().degrees },
-        "x" to { x = it.toDouble() },
-        "y" to { y = it.toDouble() },
-    )
-
-fun prop(prop: KMutableProperty0<Double>) {
-
-}
-
-fun setter(prop: KMutableProperty0<Double>): (String) -> Unit = {
-    prop.set(it.toDouble())
 }
