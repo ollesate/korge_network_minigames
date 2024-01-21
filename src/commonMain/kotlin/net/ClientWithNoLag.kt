@@ -2,7 +2,6 @@ package net
 
 import korlibs.encoding.*
 import korlibs.io.async.*
-import korlibs.io.concurrent.atomic.*
 import korlibs.io.experimental.*
 import korlibs.io.lang.*
 import korlibs.io.net.*
@@ -13,13 +12,11 @@ import korlibs.io.util.*
 import korlibs.memory.*
 import korlibs.platform.*
 import korlibs.time.*
-import korlibs.time.measureTime
 import kotlinx.coroutines.*
 import kotlin.coroutines.*
 import kotlin.random.*
-import kotlin.time.*
 
-suspend fun MyClient(
+suspend fun ClientWithNoLag(
     url: String,
     protocols: List<String>? = null,
     origin: String? = null,
@@ -33,13 +30,23 @@ suspend fun MyClient(
     if (Platform.isJsBrowserOrWorker) error("RawSocketWebSocketClient is not supported on JS browser. Use WebSocketClient instead")
     val uri = URL(url)
     val secure: Boolean = uri.isSecureScheme
-    return MyClient(coroutineContext, AsyncClient.create(secure = secure), uri, protocols, debug, origin, wskey, headers, masked).also {
+    return ClientWithNoLag(
+        coroutineContext,
+        AsyncClient.create(secure = secure),
+        uri,
+        protocols,
+        debug,
+        origin,
+        wskey,
+        headers,
+        masked
+    ).also {
         init(it)
         if (connect) it.internalConnect()
     }
 }
 
-class MyClient(
+class ClientWithNoLag(
     val coroutineContext: CoroutineContext,
     val client: AsyncClient,
     val urlUrl: URL,
@@ -120,18 +127,9 @@ class MyClient(
         onOpen(Unit)
         try {
             loop@ while (!closed) {
-                measureTime {
-
-
-
-                val frame = measureTimedValue {
-                    withContext(Dispatchers.Default) {
-                        readWsFrameOrNull()
-                    }
-                }.also {
-                    println("Reading frame took ${it.duration}")
-                }.value
-                    ?: return@measureTime
+                val frame = withContext(Dispatchers.Default) {
+                    readWsFrameOrNull()
+                } ?: break
 
                 if (frame.type == WsOpcode.Close) {
                     val closeReason = if (frame.data.size >= 2) frame.data.getU16BE(0) else CloseReasons.UNEXPECTED
@@ -141,34 +139,33 @@ class MyClient(
 
                 when (frame.type) {
                     WsOpcode.Ping -> {
-                        println("Received ping")
                         sendWsFrame(WsFrame(frame.data, WsOpcode.Pong, masked = masked))
                     }
+
                     WsOpcode.Pong -> {
-                        println("Received pong")
                         lastPong = DateTime.now()
                     }
+
                     WsOpcode.Text, WsOpcode.Binary, WsOpcode.Continuation -> {
 
-                            if (frame.type != WsOpcode.Continuation) {
-                                chunks.clear()
-                                isTextFrame = (frame.type == WsOpcode.Text)
+                        if (frame.type != WsOpcode.Continuation) {
+                            chunks.clear()
+                            isTextFrame = (frame.type == WsOpcode.Text)
+                        }
+                        chunks.add(frame.data)
+                        if (frame.isFinal) {
+                            val payloadBinary = chunks.join()
+                            chunks.clear()
+                            val payload: Any = if (isTextFrame) payloadBinary.toString(UTF8) else payloadBinary
+                            when (payload) {
+                                is String -> onStringMessage(payload)
+                                is ByteArray -> onBinaryMessage(payload)
                             }
-                            chunks.add(frame.data)
-                            if (frame.isFinal) {
-                                val payloadBinary = chunks.join()
-                                chunks.clear()
-                                val payload: Any = if (isTextFrame) payloadBinary.toString(UTF8) else payloadBinary
-                                when (payload) {
-                                    is String -> onStringMessage(payload)
-                                    is ByteArray -> onBinaryMessage(payload)
-                                }
-                                onAnyMessage(payload)
-                            }
+                            onAnyMessage(payload)
+                        }
 
                     }
                 }
-                }.also { println("Recevied took $it") }
             }
         } catch (e: Throwable) {
             //e.printStackTrace()
@@ -243,6 +240,7 @@ suspend fun readFrameOrNull(s: AsyncInputStream): WsFrame? {
             if (hi != 0) error("message too long > 2**32")
             s.readS32BE()
         }
+
         else -> partialLength
     }
 
@@ -266,7 +264,6 @@ suspend fun readFrameOrNull(s: AsyncInputStream): WsFrame? {
 
     return WsFrame(finalData, opcode, isFinal, isMasked)
 }
-
 
 
 //class JvmNioAsyncClient(private var client: AsynchronousSocketChannel? = null) : AsyncClient {

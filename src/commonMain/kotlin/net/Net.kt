@@ -16,7 +16,7 @@ const val SOCKET_URL = "ws://localhost:8080/"
 //const val SOCKET_URL = "ws://ktor-minigames-075959892b51.herokuapp.com/"
 
 suspend fun client() = Client(
-    MyClient(SOCKET_URL)
+    ClientWithNoLag(SOCKET_URL)
 )
 
 @Serializable
@@ -113,13 +113,7 @@ class Client(
     }
 
     fun send(message: Message) {
-//        launch(Dispatchers.Unconfined) {
-//            messageReceived(message)
-//        }
         outputChannel.trySend(message)
-//        launch(Dispatchers.Unconfined) {
-//            socket.send(json.encodeToString<Message>(message))
-//        }
     }
 }
 
@@ -129,18 +123,6 @@ data class State(
     val prototype: String,
     val props: Map<String, String>,
 )
-
-
-object Frames {
-    val frames = mutableListOf<Double>()
-    fun append() {
-
-        frames += DateTime.nowUnixMillis()
-        println("frames ${frames.takeLastWhile { it > DateTime.nowUnixMillis().toLong() / 1000 * 1000 }.size}")
-
-    }
-}
-
 
 suspend fun View.sync(
     id: String,
