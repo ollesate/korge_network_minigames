@@ -98,12 +98,9 @@ class ClientWithNoLag(
     suspend fun internalConnect() {
         if (Platform.isJsBrowserOrWorker) error("RawSocketWebSocketClient is not supported on JS browser. Use WebSocketClient instead")
 
-        println("internalConnect 1")
 
         client.connect(host, port)
-        println("internalConnect 2")
         client.writeBytes(buildHeader().toByteArray())
-        println("internalConnect 3")
 
         // Read response
         val headers = arrayListOf<String>()
@@ -115,14 +112,12 @@ class ClientWithNoLag(
             }
         }
 
-        println("internalConnect 4")
         readPacketsJob = launchImmediately(coroutineContext) {
             delay(1.milliseconds)
-            println("internalConnect 5")
             launch(Dispatchers.Default) {
                 internalReadPackets()
             }
-            println("internalConnect 6")
+            println("internalConnect done")
         }
     }
 
