@@ -99,82 +99,8 @@ suspend fun main() = Korge(windowSize = Size(750, 750), backgroundColor = Colors
                 }
             }
         }
-
-//        onPlayerJoined(injector) {
-//            println("player joined $it")
-//
-//
-//
-//            solidRect(50, 50) {
-//                playerControls(injector, "box_" + it.player.id) {
-//                    onReceive {
-//                        println("onReceive control update $it")
-//                        when (it) {
-//                            "A" -> x -= 10
-//                            "D" -> x += 10
-//                            "W" -> y -= 10
-//                            "S" -> y += 10
-//                        }
-//                    }
-//
-//                    if (it.isYou) {
-//                        colorMul = Colors.RED
-//                        keys {
-//                            down(Key.A) {
-//                                if (this@multiClientKorge.visible) send("A")
-//                            }
-//                            down(Key.D) {
-//                                if (this@multiClientKorge.visible) send("D")
-//                            }
-//                            down(Key.W) {
-//                                if (this@multiClientKorge.visible) send("W")
-//                            }
-//                            down(Key.S) {
-//                                if (this@multiClientKorge.visible) send("S")
-//                            }
-//                        }
-//                    }
-//                }
-//            }
-//        }
-//        solidRect(50, 50, color = colors[index]) {
-//            keys {
-//                down(Key.A) {
-//                    if (this@multiClientKorge.visible) x -= 10
-//                }
-//                down(Key.D) {
-//                    if (this@multiClientKorge.visible) x += 10
-//                }
-//            }
-//        }
     }
 }
-
-//interface Controls2 {
-//    fun send(string: String)
-//    fun onReceive(block: (String) -> Unit)
-//}
-//
-//suspend fun View.playerControls(injector: Injector, controlId: String, block: Controls2.() -> Unit): Controls2 {
-//    val client = injector.get<Client>()
-//    val callbacks = mutableListOf<(String) -> Unit>()
-//    client.onControlUpdate { message ->
-//        if (message.controlId == controlId) {
-//            callbacks.forEach {
-//                it.invoke(message.key)
-//            }
-//        }
-//    }
-//    return object: Controls2 {
-//        override fun send(string: String) {
-//            client.send(Message.ReceiveControl(controlId, string))
-//        }
-//
-//        override fun onReceive(block: (String) -> Unit) {
-//            callbacks += block
-//        }
-//    }.also(block)
-//}
 
 suspend inline fun Container.spaceship(block: Image.() -> Unit) {
     image(resourcesVfs["spaceship.png"].readBitmap()) {
