@@ -1,33 +1,9 @@
-import korlibs.korge.gradle.*
+import korlibs.korge.gradle.configureAutoVersions
 
 plugins {
-	alias(libs.plugins.korge)
+    alias(libs.plugins.korge) apply false
 }
 
-korge {
-	id = "com.sample.demo"
+configureAutoVersions()
 
-// To enable all targets at once
-
-	//targetAll()
-
-// To enable targets based on properties/environment variables
-	//targetDefault()
-
-// To selectively enable targets
-	
-	targetJvm()
-	targetJs()
-	targetDesktop()
-	targetIos()
-	targetAndroid()
-
-	serializationJson()
-}
-
-
-dependencies {
-    add("commonMainApi", project(":deps"))
-    //add("commonMainApi", project(":korge-dragonbones"))
-}
-
+allprojects { repositories { mavenLocal(); mavenCentral(); google(); gradlePluginPortal() } }

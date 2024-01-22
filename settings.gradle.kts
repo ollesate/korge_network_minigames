@@ -1,6 +1,9 @@
 pluginManagement {
     repositories { mavenLocal(); mavenCentral(); google(); gradlePluginPortal() }
 }
+plugins {
+    id("org.gradle.toolchains.foojay-resolver-convention") version "0.5.0"
+}
 
 buildscript {
     val libsTomlFile = File(this.sourceFile?.parentFile, "gradle/libs.versions.toml").readText()
@@ -21,3 +24,6 @@ buildscript {
 }
 
 apply(plugin = "com.soywiz.korge.settings")
+include("game")
+include("shared")
+include("server")

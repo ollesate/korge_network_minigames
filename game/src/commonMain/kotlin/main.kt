@@ -8,12 +8,10 @@ import korlibs.inject.*
 import korlibs.io.async.*
 import korlibs.io.file.std.*
 import korlibs.korge.input.*
-import korlibs.korge.tween.*
 import korlibs.math.geom.*
 import kotlinx.coroutines.*
 import kotlinx.serialization.*
 import net.*
-import kotlin.reflect.*
 
 val colors = listOf(
     Colors.RED, Colors.GREEN, Colors.BLUE, Colors.YELLOW
@@ -29,6 +27,7 @@ suspend fun Container.multiClientKorge(numberOfClients: Int, sceneBlocks: suspen
         }
     }
     class MyScene: Scene()
+
 
     val clients = (0 until numberOfClients).map {
         async(Dispatchers.Default) {

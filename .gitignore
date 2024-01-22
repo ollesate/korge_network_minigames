@@ -1,6 +1,7 @@
 /.gradle
 /.idea
 /build
+build/
 /modules
 /bundles
 /deps
@@ -9,6 +10,6 @@
 *.log
 korge.keystore
 local.properties
-src/main/*
+game/src/main/*
 .DS_Store
 
