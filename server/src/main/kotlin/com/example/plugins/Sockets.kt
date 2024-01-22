@@ -1,5 +1,7 @@
 package com.example.plugins
 
+import Message
+import Player
 import io.ktor.serialization.kotlinx.KotlinxWebsocketSerializationConverter
 import io.ktor.server.application.*
 import io.ktor.server.routing.*
@@ -97,44 +99,4 @@ suspend inline fun <reified T: Message> WebSocketSession.sendMessage(data: T) {
     } catch (ex: Exception) {
         println("failed to send $ex")
     }
-}
-
-@Serializable
-data class Player(
-    val id: String,
-    val isHost: Boolean,
-)
-
-@Serializable
-sealed class Message {
-    @Serializable
-    @SerialName("PlayerJoined")
-    data class PlayerJoined(
-        val player: Player,
-    ): Message()
-
-    @Serializable
-    @SerialName("ReceiveControl")
-    data class ReceiveControl(
-        val player: Player,
-        val key: List<String>
-    ): Message()
-
-    @Serializable
-    @SerialName("SendControl")
-    data class SendControl(
-        val key: List<String>
-    ): Message()
-
-    @Serializable
-    @SerialName("GetPlayers")
-    data object GetPlayers: Message()
-
-    @Serializable
-    @SerialName("UpdateState")
-    data class UpdateState(
-        val name: String,
-        val x: Double,
-        val y: Double
-    ): Message()
 }

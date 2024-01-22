@@ -1,5 +1,7 @@
 package net
 
+import Message
+import Player
 import ViewState
 import korlibs.event.*
 import korlibs.inject.*
@@ -16,45 +18,6 @@ const val SOCKET_URL = "ws://localhost:8080/"
 suspend fun client(connect: Boolean = true) = Client(
     ClientWithNoLag(SOCKET_URL, connect = connect)
 )
-
-@Serializable
-data class Player(
-    val id: String,
-    val isHost: Boolean,
-)
-
-@Serializable
-sealed class Message {
-    @Serializable
-    @SerialName("PlayerJoined")
-    data class PlayerJoined(
-        val player: Player,
-    ): Message()
-
-    @Serializable
-    @SerialName("ReceiveControl")
-    data class ReceiveControl(
-        val player: Player,
-        val key: List<Key>
-    ): Message()
-
-    @Serializable
-    @SerialName("SendControl")
-    data class SendControl(
-        val key: List<Key>
-    ): Message()
-
-    @Serializable
-    @SerialName("GetPlayers")
-    data object GetPlayers: Message()
-
-    @Serializable
-    @SerialName("UpdateState")
-    data class UpdateState(
-        val name: String,
-        val viewState: ViewState
-    ): Message()
-}
 
 private val json = Json {
     ignoreUnknownKeys = true

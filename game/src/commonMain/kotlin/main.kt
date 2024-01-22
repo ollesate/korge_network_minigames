@@ -105,8 +105,8 @@ class GameClient(
         }
         client.onUpdateState {
             val view = findViewByName(it.name) ?: it.viewState.construct()
-            view.x = it.viewState.props["x"] as? Double ?: view.x
-            view.y = it.viewState.props["y"] as? Double ?: view.y
+            view.x = it.viewState.props["x"]?.toDouble() ?: view.x
+            view.y = it.viewState.props["y"]?.toDouble() ?: view.y
         }
     }
 
@@ -114,20 +114,14 @@ class GameClient(
         return when (type) {
             SolidRect::class.simpleName -> {
                 solidRect(
-                    width = props["width"] as Double,
-                    height = props["height"] as Double,
+                    width = props["width"]!!.toDouble(),
+                    height = props["height"]!!.toDouble(),
                 )
             }
             else -> error("Can't construct $type")
         }
     }
 }
-
-@Serializable
-class ViewState(
-    val type: String,
-    val props: Map<String, @Contextual Any>
-)
 
 private fun View.getState(): ViewState {
     return ViewState(
@@ -139,10 +133,11 @@ private fun View.getState(): ViewState {
                 this::width,
                 this::height,
             )
+
             else -> error("Failed to find state for $this")
-        }.map {
-            it.name to it.get()
-        }.toMap()
+        }.associate {
+            it.name to it.get().toString()
+        }
     )
 }
 

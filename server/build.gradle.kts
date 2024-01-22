@@ -31,6 +31,7 @@ repositories {
 }
 
 dependencies {
+    add("implementation", project(":shared"))
     add("implementation", "io.ktor:ktor-server-core-jvm")
     add("implementation", "io.ktor:ktor-server-content-negotiation-jvm")
     add("implementation", "io.ktor:ktor-serialization-kotlinx-json-jvm")
