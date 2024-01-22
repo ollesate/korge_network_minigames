@@ -8,9 +8,12 @@ import korlibs.inject.*
 import korlibs.io.async.*
 import korlibs.io.file.std.*
 import korlibs.korge.input.*
+import korlibs.korge.tween.*
 import korlibs.math.geom.*
 import kotlinx.coroutines.*
+import kotlinx.serialization.*
 import net.*
+import kotlin.reflect.*
 
 val colors = listOf(
     Colors.RED, Colors.GREEN, Colors.BLUE, Colors.YELLOW
@@ -54,13 +57,97 @@ suspend fun Container.multiClientKorge(numberOfClients: Int, sceneBlocks: suspen
     viewToShow(0)
 }
 
-class ClientServerGame(
-    val playerKeyState: MutableMap<Player, List<Key>>
-) {
+class GameServer(
+    val injector: Injector,
+    override val stage: Stage,
+): Container() {
+    private val client = injector.get<Client>()
+    private val playerKeyState = mutableMapOf<Player, List<Key>>()
+
+    init {
+        onKeysReceived(injector) { (player, keys) ->
+            println("Received control")
+            playerKeyState[player] = keys
+        }
+    }
+
     fun getPlayerInput(player: Player) = playerKeyState[player].orEmpty()
+
+    override fun onChildAdded(view: View) {
+        client.send(
+            Message.UpdateState(
+                name = view.name!!,
+                viewState = view.getState()
+            )
+        )
+    }
 }
 
-suspend fun Container.clientServerGame(injector: Injector, index: Int, isHost: Boolean, block: suspend ClientServerGame.() -> Unit) {
+class GameClient(
+    val injector: Injector,
+): Container() {
+    private val client = injector.get<Client>()
+    private var myKeyState = listOf<Key>()
+    private val validKeys = listOf(
+        Key.A, Key.D, Key.W, Key.S, Key.LEFT, Key.RIGHT, Key.UP, Key.DOWN,
+    )
+
+    init {
+        addUpdater {
+            val keyState = validKeys.filter {
+                stage?.keys?.pressing(it) == true
+            }
+            if (myKeyState != keyState) {
+                client.send(
+                    Message.SendControl(keyState)
+                )
+                myKeyState = keyState
+            }
+        }
+        client.onUpdateState {
+            val view = findViewByName(it.name) ?: it.viewState.construct()
+            view.x = it.viewState.props["x"] as? Double ?: view.x
+            view.y = it.viewState.props["y"] as? Double ?: view.y
+        }
+    }
+
+    private fun ViewState.construct(): View {
+        return when (type) {
+            SolidRect::class.simpleName -> {
+                solidRect(
+                    width = props["width"] as Double,
+                    height = props["height"] as Double,
+                )
+            }
+            else -> error("Can't construct $type")
+        }
+    }
+}
+
+@Serializable
+class ViewState(
+    val type: String,
+    val props: Map<String, @Contextual Any>
+)
+
+private fun View.getState(): ViewState {
+    return ViewState(
+        type = this::class.simpleName!!,
+        props = when (this) {
+            is SolidRect -> listOf(
+                this::x,
+                this::y,
+                this::width,
+                this::height,
+            )
+            else -> error("Failed to find state for $this")
+        }.map {
+            it.name to it.get()
+        }.toMap()
+    )
+}
+
+suspend fun Container.clientServerGame(injector: Injector, index: Int, isHost: Boolean, block: suspend GameServer.() -> Unit) {
     val client = injector.get<Client>()
     val playerKeyState = mutableMapOf<Player, List<Key>>()
     var myKeyState = listOf<Key>()
@@ -88,12 +175,10 @@ suspend fun Container.clientServerGame(injector: Injector, index: Int, isHost: B
             }
         }
     }
+}
 
-    ClientServerGame(
-        playerKeyState
-    ).also {
-        block(it)
-    }
+suspend fun Container.gameServer(injector: Injector, block: suspend GameServer.() -> Unit) {
+
 }
 
 val keysLeft = listOf(Key.A, Key.J, Key.LEFT)
@@ -103,33 +188,27 @@ val keysDown = listOf(Key.S, Key.K, Key.DOWN)
 
 suspend fun main() = Korge(windowSize = Size(750, 750), backgroundColor = Colors["#2b2b2b"]) {
     multiClientKorge(3) { (injector, index) ->
-        val isHost = index == 0
-        clientServerGame(injector, index, isHost) {
-            if (isHost) {
-                println("Host started")
-                onPlayerJoined(injector) { playerJoined ->
-                    println("OnPlayerJoined ${playerJoined.player.id}")
-                    solidRect(50, 50) {
-                        spawn(injector, "rect_${playerJoined.player.id}")
-                        addUpdater {
-                            getPlayerInput(playerJoined.player).forEach { key ->
-                                when (key) {
-                                    in keysLeft -> x -= 10
-                                    in keysRight -> x += 10
-                                    in keysUp -> y -= 10
-                                    in keysDown -> y += 10
-                                    else -> {}
-                                }
-                            }
-                        }
-                    }
-                }
-            } else {
-                println("Client started")
-                onState(injector) {
-                    solidRect(50, 50) {
-                        x = it.x
-                        y = it.y
+        if (index == 0) {
+            asteroidGame()
+        } else {
+            asteroidClient()
+        }
+    }
+}
+
+suspend fun SceneContainer.asteroidGame() = gameServer(currentScene!!.injector) {
+    onPlayerJoined(injector) { playerJoined ->
+        println("OnPlayerJoined ${playerJoined.player.id}")
+        solidRect(50, 50) {
+            name(playerJoined.player.id)
+            addUpdater {
+                getPlayerInput(playerJoined.player).forEach { key ->
+                    when (key) {
+                        in keysLeft -> x -= 10
+                        in keysRight -> x += 10
+                        in keysUp -> y -= 10
+                        in keysDown -> y += 10
+                        else -> {}
                     }
                 }
             }
@@ -137,18 +216,8 @@ suspend fun main() = Korge(windowSize = Size(750, 750), backgroundColor = Colors
     }
 }
 
-fun View.spawn(injector: Injector, name: String) {
-    val client = injector.get<Client>()
-    var oldX = x
-    var oldY = y
-    addUpdater {
-        if (x != oldX || y != oldY) {
-            oldX = x
-            oldY = y
-            client.send(Message.UpdateState(name, x, y))
-        }
-    }
-    client.send(Message.UpdateState(name, x, y))
+suspend fun Stage.asteroidClient() {
+
 }
 
 fun playerInput(injector: Injector, player: Player, function: (keys: List<Key>) -> Unit) {

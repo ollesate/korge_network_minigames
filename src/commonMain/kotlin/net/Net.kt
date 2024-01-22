@@ -1,5 +1,6 @@
 package net
 
+import ViewState
 import korlibs.event.*
 import korlibs.inject.*
 import korlibs.io.async.*
@@ -51,8 +52,7 @@ sealed class Message {
     @SerialName("UpdateState")
     data class UpdateState(
         val name: String,
-        val x: Double,
-        val y: Double
+        val viewState: ViewState
     ): Message()
 }
 
@@ -98,7 +98,7 @@ class Client(
         }
     }
 
-    fun onControlUpdate(function: suspend (Message.ReceiveControl) -> Unit) {
+    fun onControlUpdate(function: (Message.ReceiveControl) -> Unit) {
         controlUpdate {
             function(it)
         }
@@ -128,10 +128,10 @@ suspend fun Container.onPlayerJoined(injector: Injector, block: suspend Containe
     client.send(Message.GetPlayers)
 }
 
-suspend fun Container.onKeysReceived(injector: Injector, block: suspend Container.(Pair<Player, List<Key>>) -> Unit) {
+fun onKeysReceived(injector: Injector, block: (Pair<Player, List<Key>>) -> Unit) {
     val client = injector.get<Client>()
     client.onControlUpdate {
-        block(this, it.player to it.key)
+        block(it.player to it.key)
     }
 }
 
