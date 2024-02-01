@@ -10,7 +10,6 @@ import korlibs.io.file.std.*
 import korlibs.korge.input.*
 import korlibs.math.geom.*
 import kotlinx.coroutines.*
-import kotlinx.serialization.*
 import net.*
 
 val colors = listOf(
@@ -62,6 +61,7 @@ class GameServer(
 ): Container() {
     private val client = injector.get<Client>()
     private val playerKeyState = mutableMapOf<Player, List<Key>>()
+    val spawnedViews = mutableListOf<View>()
 
     init {
         onKeysReceived(injector) { (player, keys) ->
@@ -72,11 +72,17 @@ class GameServer(
 
     fun getPlayerInput(player: Player) = playerKeyState[player].orEmpty()
 
-    override fun onChildAdded(view: View) {
+    fun View.spawn(id: String) {
+        spawnedViews += this
+        name = id
+        update()
+    }
+
+    fun View.update() {
         client.send(
             Message.UpdateState(
-                name = view.name!!,
-                viewState = view.getState()
+                name = name!!,
+                viewState = getState()
             )
         )
     }
@@ -84,6 +90,7 @@ class GameServer(
 
 class GameClient(
     val injector: Injector,
+    val keysToUse: List<Key>,
 ): Container() {
     private val client = injector.get<Client>()
     private var myKeyState = listOf<Key>()
@@ -94,7 +101,7 @@ class GameClient(
     init {
         addUpdater {
             val keyState = validKeys.filter {
-                stage?.keys?.pressing(it) == true
+                it in keysToUse && stage?.keys?.pressing(it) == true
             }
             if (myKeyState != keyState) {
                 client.send(
@@ -103,10 +110,11 @@ class GameClient(
                 myKeyState = keyState
             }
         }
-        client.onUpdateState {
-            val view = findViewByName(it.name) ?: it.viewState.construct()
-            view.x = it.viewState.props["x"]?.toDouble() ?: view.x
-            view.y = it.viewState.props["y"]?.toDouble() ?: view.y
+        client.onUpdateState { message ->
+            val view = findViewByName(message.name) ?: message.viewState.construct()
+                .also { it.name(message.name) }
+            view.x = message.viewState.props["x"]?.toDouble() ?: view.x
+            view.y = message.viewState.props["y"]?.toDouble() ?: view.y
         }
     }
 
@@ -141,39 +149,13 @@ private fun View.getState(): ViewState {
     )
 }
 
-suspend fun Container.clientServerGame(injector: Injector, index: Int, isHost: Boolean, block: suspend GameServer.() -> Unit) {
-    val client = injector.get<Client>()
-    val playerKeyState = mutableMapOf<Player, List<Key>>()
-    var myKeyState = listOf<Key>()
-    val validKeys = listOf(
-        listOf(Key.A, Key.D, Key.W, Key.S),
-        listOf(Key.LEFT, Key.RIGHT, Key.UP, Key.DOWN),
-        listOf(Key.I, Key.J, Key.K, Key.L),
-    )
-
-    if (isHost) {
-        onKeysReceived(injector) { (player, keys) ->
-            println("Received control")
-            playerKeyState[player] = keys
-        }
-    } else {
-        addUpdater {
-            val keyState = validKeys[index - 1].filter {
-                stage?.keys?.pressing(it) == true
-            }
-            if (myKeyState != keyState) {
-                client.send(
-                    Message.SendControl(keyState)
-                )
-                myKeyState = keyState
-            }
-        }
+suspend fun Container.gameServer(injector: Injector, block: suspend GameServer.() -> Unit) {
+    GameServer(injector, stage!!).also {
+        block(it)
+        addChild(it)
     }
 }
 
-suspend fun Container.gameServer(injector: Injector, block: suspend GameServer.() -> Unit) {
-
-}
 
 val keysLeft = listOf(Key.A, Key.J, Key.LEFT)
 val keysRight = listOf(Key.D, Key.L, Key.RIGHT)
@@ -185,7 +167,15 @@ suspend fun main() = Korge(windowSize = Size(750, 750), backgroundColor = Colors
         if (index == 0) {
             asteroidGame()
         } else {
-            asteroidClient()
+            GameClient(
+                injector,
+                listOf(
+                    listOf(Key.A, Key.D, Key.W, Key.S),
+                    listOf(Key.LEFT, Key.RIGHT, Key.UP, Key.DOWN)
+                )[index - 1]
+            ).also {
+                addChild(it)
+            }
         }
     }
 }
@@ -194,9 +184,11 @@ suspend fun SceneContainer.asteroidGame() = gameServer(currentScene!!.injector) 
     onPlayerJoined(injector) { playerJoined ->
         println("OnPlayerJoined ${playerJoined.player.id}")
         solidRect(50, 50) {
-            name(playerJoined.player.id)
+            x = spawnedViews.size * 100.0
+            spawn(playerJoined.player.id)
             addUpdater {
-                getPlayerInput(playerJoined.player).forEach { key ->
+                val input = getPlayerInput(playerJoined.player)
+                input.forEach { key ->
                     when (key) {
                         in keysLeft -> x -= 10
                         in keysRight -> x += 10
@@ -205,14 +197,14 @@ suspend fun SceneContainer.asteroidGame() = gameServer(currentScene!!.injector) 
                         else -> {}
                     }
                 }
+                if (input.isNotEmpty()) {
+                    update()
+                }
             }
         }
     }
 }
 
-suspend fun Stage.asteroidClient() {
-
-}
 
 fun playerInput(injector: Injector, player: Player, function: (keys: List<Key>) -> Unit) {
     injector.get<Client>().onControlUpdate {

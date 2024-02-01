@@ -27,7 +27,7 @@ class Client(
     val socket: ClientWithNoLag,
 ) {
     private val inputChannel = socket.messageChannelString()
-    private val outputChannel = Channel<Message>()
+    private val outputChannel = Channel<Message>(Channel.UNLIMITED)
     private val playerJoined = AsyncSignal<Message.PlayerJoined>()
     private val controlUpdate = AsyncSignal<Message.ReceiveControl>()
     private val updateState = AsyncSignal<Message.UpdateState>()
@@ -36,9 +36,10 @@ class Client(
         launch(Dispatchers.CIO) {
             while (!outputChannel.isClosedForReceive) {
                 val message = outputChannel.receive()
+                println("Send message $message")
                 socket.send(json.encodeToString<Message>(message))
-//                messageReceived(message)
             }
+            error("Send channel closed")
         }
 
         launch(Dispatchers.CIO) {
@@ -46,6 +47,11 @@ class Client(
                 println("Received message $message")
                 messageReceived(json.decodeFromString<Message>(message as String))
             }
+            error("Receive channel closed")
+        }
+
+        socket.onError {
+            it.printStackTrace()
         }
     }
 
@@ -78,8 +84,7 @@ class Client(
     }
 
     fun send(message: Message) {
-        println("Send message $message")
-        outputChannel.trySend(message)
+        outputChannel.trySend(message).also { println("try send $message ${it.isSuccess}") }
     }
 }
 

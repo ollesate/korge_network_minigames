@@ -33,7 +33,7 @@ data class Player(
 )
 
 @Serializable
-class ViewState(
+data class ViewState(
     val type: String,
     val props: Map<String, String>
 )
@@ -66,6 +66,7 @@ sealed class Message {
     @Serializable
     @SerialName("UpdateState")
     data class UpdateState(
+        val id: Long = 0L,
         val name: String,
         val viewState: ViewState
     ): Message()

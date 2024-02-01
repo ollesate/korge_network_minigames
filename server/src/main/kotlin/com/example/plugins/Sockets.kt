@@ -22,9 +22,10 @@ var webSockets = mutableListOf<DefaultWebSocketSession>()
 var players = mutableMapOf<DefaultWebSocketSession, Player>()
 var host: DefaultWebSocketSession? = null
 
+var messageId: Long = 0L
+
 fun Application.configureSockets() {
     install(WebSockets) {
-        contentConverter = KotlinxWebsocketSerializationConverter(json)
         pingPeriod = Duration.ofSeconds(15)
         timeout = Duration.ofSeconds(15)
         maxFrameSize = Long.MAX_VALUE
@@ -42,10 +43,9 @@ fun Application.configureSockets() {
             )
 
             players += this to player
-            val previousPlayers = players.entries.filter { it.key != this }
-            previousPlayers.forEach { (socket, otherPlayer) ->
-                println("Message player ${index} about player ${webSockets.indexOf(socket)} joining")
-                sendMessage<Message>(Message.PlayerJoined(otherPlayer))
+
+            if (host != null && host != this) {
+                sendMessage<Message>(Message.PlayerJoined(player))
             }
 
             for (frame in incoming) {
@@ -68,6 +68,14 @@ fun Application.configureSockets() {
                         continue
                     }
 
+                    if (message is Message.UpdateState) {
+                        (webSockets - this).forEach {
+                            it.sendMessage(message.copy(id = messageId))
+                        }
+                        messageId++
+                        continue
+                    }
+
                     println("Respond to client: " + (webSockets - this).map { webSockets.indexOf(it) })
 
                     (webSockets - this).forEach {
@@ -86,17 +94,25 @@ fun Application.configureSockets() {
 
             webSockets -= this
             val leaver = players.remove(this)
-            println("player ${leaver?.id} left, ${webSockets.size} players left")
+            if (host == this) {
+                println("Host left remove all other players")
+                webSockets.forEach { it.close() }
+                webSockets.clear()
+                players.clear()
+            } else {
+                println("player ${leaver?.id} left, ${webSockets.size} players left")
+            }
         }
     }
 }
 
 suspend inline fun <reified T: Message> WebSocketSession.sendMessage(data: T) {
     try {
-        send(json.encodeToString<Message>(data).also {
+        send(Json.encodeToString<Message>(data).also {
             println("Send to player $it")
         })
     } catch (ex: Exception) {
+        ex.printStackTrace()
         println("failed to send $ex")
     }
 }
